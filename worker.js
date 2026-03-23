@@ -22,6 +22,9 @@ const CONFIG = {
   // WordPress origin
   wpOrigin: 'https://zyvndv90k2.wpdns.site',
 
+  // Go High Level origin (explicit, since Custom Domain replaces DNS origin)
+  ghlOrigin: 'https://sites.ludicrous.cloud',
+
   // Paths that should be served from WordPress
   wpPaths: ['/blog', '/area', '/offer'],
 
@@ -51,11 +54,8 @@ export default {
       return handleWPRequest(request, url, ctx);
     }
 
-    // Everything else passes through to GHL (origin)
-    const response = await fetch(request);
-    const newResponse = new Response(response.body, response);
-    newResponse.headers.set('X-Proxy', 'cf-hybrid-cms-ghl');
-    return newResponse;
+    // Everything else goes to GHL
+    return handleGHLRequest(request, url);
   },
 };
 
@@ -84,6 +84,56 @@ function shouldProxyToWP(path) {
   }
 
   return false;
+}
+
+// ─── GHL Proxy Handler ───────────────────────────────────────────────────────
+
+async function handleGHLRequest(request, url) {
+  // Build the GHL URL
+  const ghlURL = new URL(url.pathname + url.search, CONFIG.ghlOrigin);
+
+  // Clone headers and set Host to the public domain (GHL expects this)
+  const headers = new Headers(request.headers);
+  headers.set('Host', CONFIG.publicDomain);
+  headers.set('X-Forwarded-Proto', 'https');
+
+  const proxyRequest = new Request(ghlURL.toString(), {
+    method: request.method,
+    headers: headers,
+    body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
+    redirect: 'manual',
+  });
+
+  try {
+    const response = await fetch(proxyRequest);
+
+    // Rewrite redirect Location headers if they reference the GHL origin
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get('Location');
+      if (location) {
+        const ghlHost = new URL(CONFIG.ghlOrigin).hostname;
+        const newLocation = location.replace(
+          new RegExp(`https?://${escapeRegex(ghlHost)}`, 'g'),
+          `https://${CONFIG.publicDomain}`
+        );
+        const redirectHeaders = new Headers(response.headers);
+        redirectHeaders.set('Location', newLocation);
+        return new Response(null, {
+          status: response.status,
+          headers: redirectHeaders,
+        });
+      }
+    }
+
+    const newResponse = new Response(response.body, response);
+    newResponse.headers.set('X-Proxy', 'cf-hybrid-cms-ghl');
+    return newResponse;
+  } catch (err) {
+    return new Response('Service temporarily unavailable.', {
+      status: 502,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  }
 }
 
 // ─── WordPress Proxy Handler ─────────────────────────────────────────────────
