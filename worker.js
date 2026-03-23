@@ -52,7 +52,10 @@ export default {
     }
 
     // Everything else passes through to GHL (origin)
-    return fetch(request);
+    const response = await fetch(request);
+    const newResponse = new Response(response.body, response);
+    newResponse.headers.set('X-Proxy', 'cf-hybrid-cms-ghl');
+    return newResponse;
   },
 };
 
