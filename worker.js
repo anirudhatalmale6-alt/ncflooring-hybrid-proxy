@@ -22,8 +22,8 @@ const CONFIG = {
   // WordPress origin
   wpOrigin: 'https://zyvndv90k2.wpdns.site',
 
-  // Go High Level origin (explicit, since Custom Domain replaces DNS origin)
-  ghlOrigin: 'https://sites.ludicrous.cloud',
+  // Go High Level origin via bypass subdomain (DNS-only A record to avoid Cloudflare WAF block)
+  ghlOrigin: 'https://ghl-origin.ncflooringliquidators.com',
 
   // Paths that should be served from WordPress
   wpPaths: ['/blog', '/area', '/offer'],
